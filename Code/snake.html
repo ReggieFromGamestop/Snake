@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snake Deluxe</title>
+
+<style>
+  :root {
+    --green: #0f0;
+    --bg: #000;
+  }
+
+  body {
+    margin: 0;
+    background: #0b0b0b;
+    color: white;
+    font-family: monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+
+  #container {
+    position: relative;
+    text-align: center;
+  }
+
+  canvas {
+    background: var(--bg);
+    border: 3px solid var(--green);
+  }
+
+  .neon canvas {
+    box-shadow:
+      0 0 10px var(--green),
+      0 0 20px var(--green),
+      inset 0 0 10px var(--green);
+  }
+
+  .crt {
+    filter: contrast(1.2) brightness(1.1);
+  }
+
+  .crt::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.03),
+      rgba(255,255,255,0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
+
+  #hud {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  button, input[type="range"] {
+    background: #222;
+    color: white;
+    border: 1px solid #555;
+    padding: 6px;
+  }
+
+  #settings {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  #mobileControls {
+    display: none;
+    margin-top: 10px;
+  }
+
+  #mobileControls button {
+    width: 60px;
+    height: 40px;
+    margin: 3px;
+  }
+</style>
+</head>
+
+<body>
+<div id="container">
+  <div id="hud">
+    <div>Score: <span id="score">0</span></div>
+    <div>
+      <button onclick="togglePause()">⏸</button>
+      <button onclick="openSettings()">⚙️</button>
+      <button onclick="restart()">🔄</button>
+    </div>
+  </div>
+
+  <canvas id="game" width="400" height="400"></canvas>
+
+  <div id="mobileControls">
+    <div><button onclick="setDir('UP')">⬆️</button></div>
+    <div>
+      <button onclick="setDir('LEFT')">⬅️</button>
+      <button onclick="setDir('RIGHT')">➡️</button>
+    </div>
+    <div><button onclick="setDir('DOWN')">⬇️</button></div>
+  </div>
+
+  <div id="settings">
+    <h2>Settings</h2>
+
+    <label>Mobile Controls <input type="checkbox" onchange="toggleMobile(this.checked)"></label>
+    <label>Smooth / Modern <input type="checkbox" onchange="smooth=this.checked"></label>
+    <label>Neon / CRT Mode <input type="checkbox" onchange="toggleCRT(this.checked)"></label>
+    <label>Mute Sound <input type="checkbox" onchange="mute=this.checked"></label>
+
+    <label>
+      Speed
+      <input type="range" min="60" max="200" step="10" value="120"
+        onchange="setSpeed(this.value)">
+    </label>
+
+    <button onclick="toggleFullscreen()">⛶ Fullscreen</button>
+    <button onclick="closeSettings()">Close</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const container = document.getElementById("container");
+
+const box = 20;
+const size = 400;
+
+let snake, food, direction, score;
+let speed = 120;
+let paused = false;
+let smooth = false;
+let mute = false;
+let loop;
+
+// sounds
+const eatSound = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
+const dieSound = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
+
+function play(sound) {
+  if (!mute) sound.cloneNode().play();
+}
+
+function init() {
+  snake = [{ x: 200, y: 200 }];
+  direction = "RIGHT";
+  score = 0;
+  paused = false;
+  scoreEl.textContent = score;
+  spawnFood();
+  restartLoop();
+}
+
+function restartLoop() {
+  clearInterval(loop);
+  loop = setInterval(draw, speed);
+}
+
+function spawnFood() {
+  food = {
+    x: Math.floor(Math.random() * (size / box)) * box,
+    y: Math.floor(Math.random() * (size / box)) * box
+  };
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key.startsWith("Arrow")) setDir(e.key.replace("Arrow","").toUpperCase());
+  if (e.key === " ") togglePause();
+});
+
+function setDir(dir) {
+  if (
+    (dir === "UP" && direction !== "DOWN") ||
+    (dir === "DOWN" && direction !== "UP") ||
+    (dir === "LEFT" && direction !== "RIGHT") ||
+    (dir === "RIGHT" && direction !== "LEFT")
+  ) direction = dir;
+}
+
+function draw() {
+  if (paused) return;
+  ctx.clearRect(0,0,size,size);
+
+  snake.forEach((s,i)=>{
+    ctx.fillStyle = i===0 ? "#0f0" : "#0a0";
+    if (smooth) {
+      ctx.beginPath();
+      ctx.roundRect(s.x,s.y,box,box,6);
+      ctx.fill();
+    } else ctx.fillRect(s.x,s.y,box,box);
+  });
+
+  ctx.fillStyle="red";
+  ctx.fillRect(food.x,food.y,box,box);
+
+  let head={...snake[0]};
+  if(direction==="UP")head.y-=box;
+  if(direction==="DOWN")head.y+=box;
+  if(direction==="LEFT")head.x-=box;
+  if(direction==="RIGHT")head.x+=box;
+
+  if (
+    head.x<0||head.y<0||head.x>=size||head.y>=size||
+    snake.some(s=>s.x===head.x&&s.y===head.y)
+  ){
+    play(dieSound);
+    alert("Game Over 💀  Score: "+score);
+    init();
+    return;
+  }
+
+  snake.unshift(head);
+
+  if(head.x===food.x&&head.y===food.y){
+    score++;
+    scoreEl.textContent=score;
+    play(eatSound);
+    spawnFood();
+  } else snake.pop();
+}
+
+function togglePause(){paused=!paused;}
+function restart(){init();}
+function openSettings(){paused=true;settings.style.display="flex";}
+function closeSettings(){settings.style.display="none";paused=false;}
+
+function toggleMobile(on){
+  mobileControls.style.display=on?"block":"none";
+}
+
+function toggleCRT(on){
+  container.classList.toggle("neon",on);
+  container.classList.toggle("crt",on);
+}
+
+function setSpeed(val){
+  speed=val;
+  restartLoop();
+}
+
+function toggleFullscreen(){
+  if(!document.fullscreenElement)
+    container.requestFullscreen();
+  else document.exitFullscreen();
+}
+
+init();
+</script>
+</body>
+</html>
